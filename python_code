@@ -1,0 +1,153 @@
+import networkx as nx
+import matplotlib.pyplot as plt
+import random
+from collections import defaultdict
+
+class Graph:
+    def __init__(self, edges, initial_partition):
+        self.edges = edges
+        self.nodes = list(set([n for edge in edges for n in edge]))
+        self.partition = initial_partition
+        self.gain = defaultdict(int)
+        self.locked = {node: False for node in self.nodes}
+
+    def cut_size(self):
+        """Calculate the current cut size as the number of edges crossing partitions."""
+        cut_edges = 0
+        for (u, v) in self.edges:
+            if self.partition[u] != self.partition[v]:
+                cut_edges += 1
+        return cut_edges
+
+    def calculate_gain(self):
+        """Calculate the gain for each unlocked node."""
+        for node in self.nodes:
+            if not self.locked[node]:  # Only calculate gain for unlocked nodes
+                self.gain[node] = self.compute_gain(node)
+
+    def compute_gain(self, node):
+        """Compute the gain of a single node based on the partition configuration."""
+        internal_edges = 0
+        external_edges = 0
+        for (u, v) in self.edges:
+            if u == node or v == node:
+                neighbor = v if u == node else u
+                if self.partition[neighbor] == self.partition[node]:
+                    internal_edges += 1
+                else:
+                    external_edges += 1
+        return external_edges - internal_edges
+
+    def move_node(self):
+        """Find and move the node with the highest gain to the opposite partition."""
+        max_gain_node = None
+        max_gain = float('-inf')
+        for node in self.nodes:
+            if not self.locked[node] and self.gain[node] > max_gain:
+                max_gain = self.gain[node]
+                max_gain_node = node
+
+        if max_gain_node is not None:
+            # Move the node to the opposite partition
+            self.partition[max_gain_node] = 1 - self.partition[max_gain_node]
+            self.locked[max_gain_node] = True
+            return max_gain_node, max_gain
+        return None, None
+
+    def one_pass(self):
+        """Perform one pass of the FM algorithm and return total gain and moves."""
+        moves = []
+        self.calculate_gain()
+        for _ in range(len(self.nodes)):
+            node, gain = self.move_node()
+            if node is not None:
+                moves.append((node, gain))
+                print(f"Moved Node: {node} with Gain: {gain}\n")
+                # Recalculate gains after each move to ensure updated state
+                self.calculate_gain()
+        return moves
+
+    def run_fm(self, max_iterations=8):
+        """Run the FM algorithm for a fixed number of iterations."""
+        cut_sizes = []
+        moves_per_iteration = []
+        current_cut_size = self.cut_size()
+        cut_sizes.append(current_cut_size)
+
+        print(f"Initial cut size: {current_cut_size}\n")
+
+        for iteration in range(1, max_iterations + 1):
+            print(f"Iteration {iteration}:")
+            moves = self.one_pass()
+            current_cut_size = self.cut_size()  # Update cut size after moves
+            cut_sizes.append(current_cut_size)
+            moves_per_iteration.append(moves)
+
+            # Display cut size for this iteration
+            print(f"Cut size = {current_cut_size}")
+
+            # Only print moves if there are any
+            if moves:
+                print(f"Moves: {moves}\n")
+
+            # Visualize both bucket list and partition together after each iteration
+            self.visualize_combined(iteration)
+
+        return cut_sizes, moves_per_iteration
+
+    def visualize_combined(self, iteration):
+        """Visualize both bucket list of gains and partitioned blocks."""
+
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 12))
+
+        # Prepare data for bucket list visualization (gains)
+        gains = [self.gain[node] for node in sorted(self.nodes)]
+
+        # Create a bar chart (stacked boxes) for bucket list
+        ax1.bar(range(len(gains)), gains, color='skyblue')
+
+        # Add labels and title for bucket list
+        ax1.set_xticks(range(len(gains)))
+        ax1.set_xticklabels(sorted(self.nodes), rotation=45)
+        ax1.set_xlabel('Nodes')
+        ax1.set_ylabel('Gain')
+        ax1.set_title(f'Bucket List Visualization - Iteration {iteration}')
+
+        # Create graph for partition visualization
+        G = nx.Graph()
+        G.add_edges_from(self.edges)
+
+        pos = {}
+
+        for node in G.nodes:
+            if self.partition[node] == 0:
+                pos[node] = (-1 + random.uniform(-0.2, 0.2), random.uniform(-1, 1))
+            else:
+                pos[node] = (1 + random.uniform(-0.2, 0.2), random.uniform(-1, 1))
+
+        color_map = ['blue' if self.partition[node] == 0 else 'red' for node in G.nodes]
+
+        # Draw the graph on second subplot
+        nx.draw(G, pos, with_labels=True, node_color=color_map, node_size=500,
+                font_color='white', font_weight='bold', ax=ax2)
+
+        ax2.axvline(x=0, color='gray', linestyle='--')  # Add dividing line
+        ax2.set_title(f'Partition Visualization - Iteration {iteration}')
+
+        plt.tight_layout()
+
+        plt.show()  # Ensure this line has no indentation issues
+
+# Example usage
+if __name__ == "__main__":
+    edges = [('a', 'c'), ('a', 'd'), ('b', 'c'), ('b', 'e'), ('c', 'f'),
+             ('d', 'f'), ('d', 'g'), ('e', 'h'), ('g', 'f'), ('g', 'h')]
+
+    initial_partition = {'a': 0, 'b': 1, 'c': 0, 'd': 0, 'e': 1, 'f': 1, 'g': 0, 'h': 1}
+
+    graph = Graph(edges, initial_partition)
+
+    cut_sizes, moves_per_iteration = graph.run_fm(max_iterations=8)
+
+    print("Final Partition:", graph.partition)
+    print("Final Cut Size:", graph.cut_size())
